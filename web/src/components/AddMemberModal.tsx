@@ -1,0 +1,191 @@
+import type React from 'react'
+
+interface AddMemberModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (e: React.FormEvent) => void
+  memberName: string
+  setMemberName: (name: string) => void
+  isSubmitting: boolean
+}
+
+export function AddMemberModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  memberName,
+  setMemberName,
+  isSubmitting,
+}: AddMemberModalProps) {
+  if (!isOpen) return null
+
+  const isValid = memberName.trim().length > 0
+
+  return (
+    <div style={modalStyles.modalBackdrop}>
+      <button
+        type="button"
+        aria-label="Close modal overlay"
+        style={modalStyles.modalOverlayButton}
+        onClick={onClose}
+      />
+      <div style={modalStyles.modalSheet} role="dialog" aria-modal="true">
+        <div style={modalStyles.modalHeader}>
+          <h3 style={modalStyles.modalTitle}>Add Household Member</h3>
+          <button type="button" onClick={onClose} style={modalStyles.modalCloseBtn}>
+            ✕
+          </button>
+        </div>
+        <p style={modalStyles.modalDescription}>
+          Members receive remainder cents based on their joining order.
+        </p>
+
+        <form onSubmit={onSubmit}>
+          <div style={modalStyles.modalInputGroup}>
+            <label htmlFor="modal-member-name" style={modalStyles.modalLabel}>
+              Member Name
+            </label>
+            <input
+              id="modal-member-name"
+              type="text"
+              placeholder="e.g. Asha, Ben, Charlie"
+              value={memberName}
+              onChange={(e) => setMemberName(e.target.value)}
+              style={modalStyles.modalInput}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <div style={modalStyles.modalActionsRow}>
+            <button type="button" onClick={onClose} style={modalStyles.modalCancelBtn}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!isValid || isSubmitting}
+              style={{
+                ...modalStyles.primaryButton,
+                opacity: !isValid || isSubmitting ? 0.45 : 1,
+                cursor: !isValid || isSubmitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isSubmitting ? 'Adding...' : 'Add Member'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+const modalStyles: Record<string, React.CSSProperties> = {
+  modalBackdrop: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 90,
+  },
+  modalOverlayButton: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'none',
+    border: 'none',
+    width: '100%',
+    height: '100%',
+    cursor: 'default',
+  },
+  modalSheet: {
+    position: 'relative',
+    zIndex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    width: '92%',
+    maxWidth: 440,
+    padding: 24,
+    boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+    border: '1px solid rgba(255, 255, 255, 0.8)',
+    animation: 'macModalScale 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: '1.2rem',
+    fontWeight: 700,
+    color: '#111827',
+  },
+  modalCloseBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#9ca3af',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    padding: 4,
+  },
+  modalDescription: {
+    margin: '0 0 18px 0',
+    color: '#6b7280',
+    fontSize: '0.85rem',
+  },
+  modalInputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: '0.825rem',
+    fontWeight: 600,
+    color: '#374151',
+  },
+  modalInput: {
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: '1px solid #d1d5db',
+    fontSize: '0.95rem',
+    outline: 'none',
+    backgroundColor: '#f9fafb',
+  },
+  modalActionsRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 8,
+  },
+  modalCancelBtn: {
+    backgroundColor: '#f3f4f6',
+    border: 'none',
+    padding: '8px 14px',
+    borderRadius: 8,
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    color: '#374151',
+    cursor: 'pointer',
+  },
+  primaryButton: {
+    backgroundColor: '#0071e3',
+    color: '#ffffff',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: 8,
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+}

@@ -180,6 +180,7 @@ Key Route Handlers:
 
 3. **`POST /api/homes/:homeId/bills`**
    - Validates `totalCents`:
+
      ```ts
      if (
        typeof totalCents !== "number" ||
@@ -189,11 +190,14 @@ Key Route Handlers:
        return c.json({ error: "totalCents must be a positive integer" }, 422);
      }
      ```
+
    - Validates home exists: `SELECT id FROM homes WHERE id = ?`. If missing -> `404` `{ error: "Home not found" }`.
    - Queries members in insertion order:
+
      ```sql
      SELECT id, name FROM members WHERE home_id = ? ORDER BY created_order ASC
      ```
+
    - If members list is empty -> `422` `{ error: "Home has no members" }`.
    - **Deterministic Remainder Splitting**:
 
@@ -224,11 +228,13 @@ Key Route Handlers:
        - If `share.idempotency_key !== key`: return `409` `{ error: "Share already paid with a different idempotency key" }`.
      - If share is unpaid (`paid_at IS NULL`):
        - Attempt atomic update:
+
          ```sql
          UPDATE shares
          SET paid_at = ?, idempotency_key = ?
          WHERE id = ? AND bill_id = ? AND paid_at IS NULL
          ```
+
        - If `meta.changes === 1`:
          Return `200` with the updated share details and timestamp.
        - If `meta.changes === 0` (concurrent request raced and updated it first):
@@ -237,6 +243,7 @@ Key Route Handlers:
 5. **`GET /api/homes/:homeId/balances`**
    - Validates home exists: `SELECT id FROM homes WHERE id = ?`. If not found -> `404` `{ error: "Home not found" }`.
    - Aggregates balances across all bills in member insertion order:
+
      ```sql
      SELECT
        m.id AS memberId,
@@ -248,6 +255,7 @@ Key Route Handlers:
      GROUP BY m.id, m.name, m.created_order
      ORDER BY m.created_order ASC
      ```
+
    - Returns `200` `{ balances: [...] }`.
 
 6. **Web Supporting Endpoints** (for frontend display):
@@ -319,6 +327,7 @@ Features to implement:
    ```
 
 4. Run web build:
+
    ```bash
    pnpm build
    ```
