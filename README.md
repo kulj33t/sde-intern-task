@@ -1,157 +1,548 @@
-# SDE Intern Assignment: Shared Bill Splitter
+# Implementation Plan: Shared Bill Splitter (SDE Intern Task)
 
-Welcome. In this assignment you build a small bill splitter for a shared home. It has two parts:
+## Goal Description
 
-1. **Homes and members:** create a home and add members to it.
-2. **Bill splitting:** split a bill between the members. Each member pays their own share.
+Build a robust, type-safe, and concurrency-resilient shared bill splitting application with:
 
-The assignment is small on purpose. We want correct, safe, and clear code. We do not want many features.
+1. **Cloudflare D1 (SQLite) Schema & Migrations**: Relational schema protecting data integrity with at least 3 named constraints (foreign keys, check constraints, unique keys).
+2. **Hono on Cloudflare Workers API**: Fully typed REST API handling home creation, member management, exact cent-based bill splitting with deterministic remainder distribution, idempotent payment processing, and member balance aggregation.
+3. **React + TanStack Router Web Client**: Resilient single-page dashboard displaying homes, members, bills, shares, and balances, with explicit loading, empty, and error states, and crash-proof error boundaries.
 
-## What we look at
+---
 
-- **Your code passes the tests.** The tests decide, not opinion. You get the visible tests. We also run extra tests that you do not see.
-- **Your code is safe when things go wrong.** Wrong input, repeated requests, and two requests at the same time must not break your data.
-- **Your code is typed.** Use TypeScript. Do not use `any`.
-- **You understand your code.** You record a short video and explain it.
+## 1. Overview
 
-Take your time. A careful, correct solution is better than a fast one. We expect 2 to 3 days of real work.
+The **Shared Bill Splitter** is a full-stack household expense management application that simplifies the process of sharing expenses among household members.
 
-## Stack (required)
+Users can create multiple households, add members, record bills, automatically distribute expenses, track payments, and monitor outstanding balances. The application ensures accurate financial calculations through integer-based currency handling and prevents duplicate payment processing through database-level atomic operations.
 
-- **API:** Hono on Cloudflare Workers
-- **Database:** Cloudflare D1 (SQLite). The binding is `DB` in `api/wrangler.jsonc`.
-- **Web:** React, Vite, TanStack Router
-- **Language:** TypeScript on both sides
-- **Tests:** Vitest, running inside the Workers runtime
-- **Quality:** Biome. `pnpm check` and `pnpm typecheck` must pass.
+## 2. Features
 
-You choose the rest (styling, form library, validation library). Pick tools you can explain.
+### Home Management
 
-## The task
+- Create and manage multiple households.
+- Retrieve and switch between existing households.
+- Maintain household information.
 
-The assignment has two parts. Do Part 1 first. Part 2 builds on it.
+### Member Management
 
-**Database.** Write the schema as SQL migration files in `api/migrations/`. For example `0001_init.sql`. The tests apply every file in this folder. Your schema must have **at least 3 named constraints** that protect the data. For example a foreign key, a `CHECK`, or a `UNIQUE` key. Be ready to explain what each constraint stops.
+- Add members to a household.
+- Maintain members in their creation order.
+- Display household members.
 
-**Errors.** Every error response is JSON: `{ "error": "message" }`.
+### Bill Splitting
 
-## Part 1: Homes and members
+- Automatically divide bills equally among household members.
+- Perform all financial calculations using integer cents.
+- Distribute remaining cents deterministically.
+- Ensure the total of all shares always equals the original bill amount.
 
-Create a home and add members to it. The order in which members are added matters in Part 2.
+### Payment Tracking
 
-#### `POST /api/homes`
+- Track paid and unpaid shares for every bill.
+- Mark individual shares as paid.
+- Prevent duplicate payment processing.
+- Provide payment status feedback.
 
-- Request: `{ "name": string }`
-- Success: `201` `{ id, name }`
+### Outstanding Balances
 
-#### `POST /api/homes/:homeId/members`
+- Calculate outstanding balances for each household member.
+- Aggregate all unpaid shares.
+- Display balances in member creation order.
 
-- Request: `{ "name": string }`
-- Success: `201` `{ id, homeId, name }`
-- Errors: `404` home not found
+### Input Validation and Error Handling
 
-Visible tests: `api/test/homes.test.ts`.
+- Validate API requests.
+- Enforce financial constraints.
+- Handle invalid requests and missing resources.
+- Return appropriate HTTP status codes.
+- Handle payment conflicts and unexpected errors.
 
-## Part 2: Bill splitting
+### Responsive Interface
 
-Add a bill to a home, split it between the members, and let each member pay their share.
+- Manage households through a web dashboard.
+- Add and manage household members.
+- Create and view bills.
+- Track payments and outstanding balances.
+- Display loading, error, and empty states.
 
-All amounts are whole **cents** (integers). `100` cents is 1 dollar. Never use decimals for money.
+## 3. Technology Stack
 
-#### `POST /api/homes/:homeId/bills`
+| Layer             | Technology             |
+| :---------------- | :--------------------- |
+| **Frontend**      | React, TypeScript      |
+| **Routing**       | TanStack Router        |
+| **Backend**       | Cloudflare Workers     |
+| **API Framework** | Hono                   |
+| **Database**      | Cloudflare D1 (SQLite) |
+| **Testing**       | Project test suite     |
+| **Code Quality**  | Biome                  |
 
-- Request: `{ "title": string, "totalCents": number }`
-- Success: `201` `{ id, homeId, title, totalCents, shares: [{ id, memberId, amountCents, paidAt: null }] }`
-- Errors: `404` home not found. `422` total is not a positive whole number, or the home has no members.
+## 4. Architecture and Data Flow
 
-#### `POST /api/bills/:billId/shares/:shareId/pay`
+The application follows a client-server architecture. The React frontend communicates with a Hono API running on Cloudflare Workers, while Cloudflare D1 provides persistent relational data storage.
 
-- Request: header `Idempotency-Key`
-- Success: `200` `{ id, memberId, amountCents, paidAt }`
-- Errors: `400` key missing. `404` bill or share not found. `409` share already paid with a different key.
+### Architecture Diagram
 
-#### `GET /api/homes/:homeId/balances`
+```mermaid
+flowchart TD
+    subgraph Client ["Web Client (React + TanStack Router)"]
+        UI["Dashboard Page"]
+        State["UI State / Fetch Handler"]
+        EB["Error Boundary & Recovery"]
+    end
 
-- Success: `200` `{ balances: [{ memberId, name, outstandingCents }] }`
-- Errors: `404` home not found
+    subgraph API ["Cloudflare Workers (Hono API)"]
+        Router["Hono App Router"]
+        Validate["Input Validation & Cent Validation"]
+        Splitter["Deterministic Split Engine"]
+        Idemp["Atomic Idempotency Engine"]
+        Balances["Balance Aggregation Engine"]
+    end
 
-**Rules**
+    subgraph Database ["Cloudflare D1 (SQLite)"]
+        HomesTable[("homes")]
+        MembersTable[("members")]
+        BillsTable[("bills")]
+        SharesTable[("shares")]
+    end
 
-- **Split.** A bill is split between all members of the home. The shares always add up to `totalCents`. If the amount does not divide evenly, the extra cents go to the members one by one, in the order the members were added to the home. Example: 1000 cents between 3 members gives `334`, `333`, `333`.
-- **Pay.** Paying marks one share as paid and sets `paidAt`. If the same `Idempotency-Key` is sent again for the same share, answer `200` with the same result. Do not pay twice. If two requests pay the same share at the same time, only one may succeed.
-- **Balances.** `outstandingCents` is the sum of the member's unpaid shares, across all bills of the home. List the members in the order they were added.
+    UI -->|User Actions| State
+    State -->|HTTP Requests with Idempotency-Key| Router
+    Router --> Validate
+    Validate --> Splitter
+    Validate --> Idemp
+    Validate --> Balances
 
-Visible tests: `api/test/bills.test.ts` and `api/test/payments.test.ts`.
+    Splitter -->|INSERT Bills & Shares| BillsTable
+    Splitter --> SharesTable
+    Idemp -->|Atomic Conditional UPDATE| SharesTable
+    Balances -->|Aggregate Unpaid Shares| SharesTable
+    Balances --> MembersTable
 
-#### Web page
+    SharesTable -->|Results & Errors| Router
+    Router -->|JSON 200/201/400/404/409/422| State
+    State --> UI
+    EB -.->|Catches Unhandled Exceptions| UI
+```
 
-Build one page that:
+### Application Flow
 
-- shows the bills of a home and the shares of each bill,
-- lets a member pay a share,
-- shows clear **loading**, **empty**, and **error** states,
-- keeps the share unpaid and shows an error if the payment fails.
+1. Users interact with the React dashboard.
+2. The frontend sends HTTP requests to the Hono API.
+3. The API validates incoming requests and applies business rules.
+4. The backend processes bill splitting, payments, and balance calculations.
+5. Cloudflare D1 stores household, member, bill, and share information.
+6. The API returns JSON responses to the frontend.
+7. The frontend updates the interface based on the API response.
 
-The page must not crash when the API answers with an error or is slow.
+## 5. Project Structure
 
-## Cases you must handle
+```text
+.
+├── api/
+│   ├── migrations/
+│   │   └── 0001_init.sql
+│   ├── src/
+│   │   └── index.ts
+│   └── test/
+│       ├── homes.test.ts
+│       ├── bills.test.ts
+│       ├── payments.test.ts
+│       └── helpers.ts
+│
+├── web/
+│   └── src/
+│       └── routes/
+│           └── index.tsx
+│
+├── package.json
+└── README.md
+```
 
-You must handle these cases and talk about them in your video:
+## 6. Database Design
 
-1. A home with no members.
-2. An amount that is zero, negative, or not a whole number.
-3. An amount that does not divide evenly.
-4. The same payment request sent twice.
-5. Two members paying the same share at the same time.
-6. A bill or share that does not exist.
-7. The API answers with a 500 error or is slow. The web page must not crash.
+The application uses four relational database tables to manage household expenses and payments.
 
-## Run it
+### 6.1. Homes
 
-This is a pnpm workspace. Install once at the root.
+Stores household information.
+
+| Column       | Description                 |
+| :----------- | :-------------------------- |
+| `id`         | Unique household identifier |
+| `name`       | Household name              |
+| `created_at` | Creation timestamp          |
+
+**Constraints:**
+
+- Household names cannot be empty.
+
+### 6.2. Members
+
+Stores household members and their insertion order.
+
+| Column          | Description                |
+| :-------------- | :------------------------- |
+| `id`            | Unique member identifier   |
+| `home_id`       | Associated household       |
+| `name`          | Member name                |
+| `created_order` | Sequential insertion order |
+| `created_at`    | Creation timestamp         |
+
+**Constraints:**
+
+- Every member must belong to an existing household.
+- Member names cannot be empty.
+- Members are ordered using `created_order`.
+
+### 6.3. Bills
+
+Stores household expenses.
+
+| Column        | Description            |
+| :------------ | :--------------------- |
+| `id`          | Unique bill identifier |
+| `home_id`     | Associated household   |
+| `title`       | Bill description       |
+| `total_cents` | Total amount in cents  |
+| `created_at`  | Creation timestamp     |
+
+**Constraints:**
+
+- Every bill must belong to an existing household.
+- Bill totals must be positive integers.
+- Bill titles cannot be empty.
+
+### 6.4. Shares
+
+Stores individual member contributions for each bill.
+
+| Column            | Description                         |
+| :---------------- | :---------------------------------- |
+| `id`              | Unique share identifier             |
+| `bill_id`         | Associated bill                     |
+| `member_id`       | Associated household member         |
+| `amount_cents`    | Assigned amount                     |
+| `paid_at`         | Payment timestamp; `NULL` if unpaid |
+| `idempotency_key` | Unique payment request key          |
+
+**Constraints:**
+
+- Every share must reference an existing bill.
+- Every share must reference an existing member.
+- Share amounts must be positive.
+- Idempotency keys must be unique.
+
+## 7. API Endpoints
+
+All API endpoints use the `/api` prefix.
+
+### 7.1. Homes
+
+| Method | Endpoint     | Description             |
+| :----- | :----------- | :---------------------- |
+| `GET`  | `/api/homes` | Retrieve all households |
+| `POST` | `/api/homes` | Create a household      |
+
+**Example request:**
+
+```json
+{
+  "name": "Apartment 101"
+}
+```
+
+### 7.2. Members
+
+| Method | Endpoint                     | Description            |
+| :----- | :--------------------------- | :--------------------- |
+| `POST` | `/api/homes/:homeId/members` | Add a household member |
+
+**Example request:**
+
+```json
+{
+  "name": "Alice"
+}
+```
+
+### 7.3. Bills
+
+| Method | Endpoint                   | Description                         |
+| :----- | :------------------------- | :---------------------------------- |
+| `POST` | `/api/homes/:homeId/bills` | Create and split a bill             |
+| `GET`  | `/api/homes/:homeId/bills` | Retrieve household bills and shares |
+
+**Example request:**
+
+```json
+{
+  "title": "Monthly Electricity",
+  "totalCents": 1000
+}
+```
+
+### 7.4. Payments
+
+| Method | Endpoint                                 | Description          |
+| :----- | :--------------------------------------- | :------------------- |
+| `POST` | `/api/bills/:billId/shares/:shareId/pay` | Mark a share as paid |
+
+**Required HTTP header:**
+
+```http
+Idempotency-Key: unique-request-key
+```
+
+### 7.5. Balances
+
+| Method | Endpoint                      | Description                          |
+| :----- | :---------------------------- | :----------------------------------- |
+| `GET`  | `/api/homes/:homeId/balances` | Retrieve outstanding member balances |
+
+**Example response:**
+
+```json
+{
+  "balances": [
+    {
+      "memberId": "member-1",
+      "name": "Alice",
+      "outstandingCents": 334
+    },
+    {
+      "memberId": "member-2",
+      "name": "Bob",
+      "outstandingCents": 333
+    }
+  ]
+}
+```
+
+## 8. Bill Splitting Logic
+
+Bills are divided equally among all members of a household. All financial calculations use integer cents to avoid floating-point precision errors. When the total cannot be divided equally, the remaining cents are distributed in member creation order.
+
+**Example: Splitting $10.00 among three members:**
+
+| Member    | Share      |
+| :-------- | :--------- |
+| Alice     | $3.34      |
+| Bob       | $3.33      |
+| Charlie   | $3.33      |
+| **Total** | **$10.00** |
+
+**Splitting Algorithm:**
+
+```typescript
+const n = members.length;
+const base = Math.floor(totalCents / n);
+const remainder = totalCents % n;
+
+const shares = members.map((member, index) => ({
+  memberId: member.id,
+  amountCents: base + (index < remainder ? 1 : 0),
+}));
+```
+
+**Algorithm Guarantees:**
+
+- Every share receives a whole-cent amount.
+- The sum of all shares always equals the original bill.
+- Remainder distribution is deterministic.
+- Members receive extra cents according to their creation order.
+
+## 9. Payment Idempotency and Concurrency
+
+Payment processing uses an atomic database update to prevent duplicate payment operations. Each payment request must include an `Idempotency-Key` header.
+
+**Payment Processing Rules:**
+
+1. If the share is unpaid, the API attempts an atomic update.
+2. If the update succeeds, the share is marked as paid.
+3. If the same key is submitted again, the existing successful result is returned.
+4. If a different key is submitted for an already-paid share, the API returns `409 Conflict`.
+5. If concurrent requests attempt to pay the same share, only one payment operation can successfully update the unpaid record.
+
+**Atomic SQL Update:**
+
+```sql
+UPDATE shares
+SET paid_at = ?, idempotency_key = ?
+WHERE id = ?
+AND bill_id = ?
+AND paid_at IS NULL;
+```
+
+_This approach uses database-level atomicity instead of relying on application-level checks alone._
+
+## 10. Balance Calculation
+
+Outstanding balances are calculated by aggregating unpaid shares for each household member. Only shares with `paid_at IS NULL` contribute to outstanding balances. The balance calculation preserves member creation order.
+
+**Example Response:**
+
+```json
+{
+  "balances": [
+    {
+      "memberId": "member-1",
+      "name": "Alice",
+      "outstandingCents": 334
+    },
+    {
+      "memberId": "member-2",
+      "name": "Bob",
+      "outstandingCents": 333
+    }
+  ]
+}
+```
+
+## 11. Frontend Functionality
+
+The React frontend provides a responsive dashboard for managing households, bills, members, payments, and outstanding balances.
+
+### 11.1. Household Management
+
+- Create new households.
+- Switch between existing households.
+- Display household members.
+
+### 11.2. Member Management
+
+- Add new members.
+- Display members in creation order.
+- Handle empty household states.
+
+### 11.3. Bill Management
+
+- Create bills using dollar-based input.
+- Convert monetary values into integer cents.
+- Display bill details and individual shares.
+- Prevent bill creation when no household members exist.
+
+### 11.4. Payment Management
+
+- Pay individual outstanding shares.
+- Generate unique idempotency keys for payment requests.
+- Display loading indicators during payment processing.
+- Update payment status only after API confirmation.
+
+### 11.5. Outstanding Balances
+
+- Display outstanding balances for every member.
+- Refresh balances after successful payments and bill creation.
+
+### 11.6. Error and Loading States
+
+- Display initial loading indicators.
+- Provide empty states for households without members or bills.
+- Display error messages for failed API requests.
+- Provide inline payment feedback.
+- Use a React Error Boundary to handle unexpected rendering errors.
+
+## 12. Design Decisions and Trade-offs
+
+| Area                       | Implementation                             | Reason                                              |
+| :------------------------- | :----------------------------------------- | :-------------------------------------------------- |
+| **Financial calculations** | Integer arithmetic in cents                | Avoid floating-point precision errors               |
+| **Member ordering**        | Sequential `created_order`                 | Ensure deterministic remainder distribution         |
+| **Payment processing**     | Atomic conditional SQL update              | Prevent duplicate payment operations                |
+| **Idempotency**            | Unique database constraint and payment key | Handle repeated requests safely                     |
+| **Frontend state**         | Native React state and custom hooks        | Keep state management simple                        |
+| **Payment feedback**       | Pessimistic UI updates                     | Display payment success only after API confirmation |
+| **Database**               | Cloudflare D1                              | Provide relational persistence with SQLite          |
+| **Feature scope**          | Core household expense management          | Keep the application focused and maintainable       |
+
+## 13. Getting Started
+
+**Prerequisites**
+Ensure the following tools are installed:
+
+- Node.js
+- pnpm
+- Cloudflare development tooling, as configured by the project
+
+### 13.1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd <project-directory>
+```
+
+### 13.2. Install Dependencies
 
 ```bash
 pnpm install
-pnpm dev          # api on :8787 and web on :5173
 ```
 
-Open http://localhost:5173. The starter page shows a title. `/api/health` returns `{ "status": "ok" }`.
+### 13.3. Database Setup
+
+Apply the database migrations using the project's configured Cloudflare D1 commands.
+For local development:
 
 ```bash
-pnpm test         # run the visible tests in api/test
-pnpm check        # Biome: format and lint. Must pass.
-pnpm check:fix    # fix what Biome can fix
-pnpm typecheck    # tsc on both packages. Must pass.
-pnpm build        # production build of the web app
+pnpm exec wrangler d1 migrations apply <database-name> --local
 ```
 
-`pnpm dev` applies your migrations to a local database before it starts the API.
-
-If pnpm says some build scripts were ignored, run `pnpm approve-builds` and allow `esbuild` and `workerd`.
-
-When you change `api/wrangler.jsonc`, refresh the `Env` types:
+### 13.4. Start Development Server
 
 ```bash
-pnpm --filter bill-splitter-api cf-typegen
+pnpm dev
 ```
 
-## Rules for the tests
+_Open the local frontend URL provided by the development server._
 
-- The visible tests are in `api/test`. They start with a failing result. Your job is to make them pass.
-- Do **not** change the visible tests or `api/test/helpers.ts`. We compare them with the original.
-- We run extra tests after you submit. They test the cases in "Cases you must handle" more closely.
+## 14. Testing
 
-## AI policy
+**Run the project test suite:**
 
-You can use AI tools. Tell us which ones and where in your answers on the form.
-You must understand every line you submit. We check this with your video and in a live call. "The AI wrote it" is not an answer.
+```bash
+pnpm test
+```
 
-## How to submit
+**Code Quality Checks:**
 
-1. Click **Use this template**, then **Create a new repository**. Make the repository **public**.
-2. Build your solution in your new repository. Small, clear commits are welcome.
-3. Update this README with a short section called **Decisions**. Write 3 decisions you made and why.
-4. Record a video of **3 minutes or less** (Loom or unlisted YouTube). Show the architecture, the data flow, and one trade-off you made. Make sure anyone with the link can view it.
-5. Paste the repository link and the video link in the application form.
+```bash
+pnpm check
+```
 
-We will run `pnpm install && pnpm check && pnpm typecheck && pnpm test` on your repository.
+**TypeScript Type Checks:**
+
+```bash
+pnpm typecheck
+```
+
+**Build the Application:**
+
+```bash
+pnpm build
+```
+
+## 15. Error Handling
+
+The API uses appropriate HTTP status codes to communicate request outcomes.
+
+| Status Code                   | Description                                   |
+| :---------------------------- | :-------------------------------------------- |
+| **200 OK**                    | Successful request                            |
+| **201 Created**               | Resource successfully created                 |
+| **400 Bad Request**           | Invalid or missing request header             |
+| **404 Not Found**             | Requested household, bill, or share not found |
+| **409 Conflict**              | Payment conflict or idempotency key mismatch  |
+| **422 Unprocessable Entity**  | Invalid input or business rule violation      |
+| **500 Internal Server Error** | Unexpected server error                       |
+
+## 16. Scope and Limitations
+
+The application focuses on household bill splitting and payment tracking. The following features are outside the current scope:
+
+- User authentication and authorization.
+- Multi-currency support.
+- Currency conversion.
+- Receipt attachments.
+- Automated payment processing.
+- Debt simplification and settlement optimization.
+- External payment gateway integration.
